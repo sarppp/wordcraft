@@ -333,6 +333,24 @@ fn open_non_unicode(app: &mut WordApp, path: &std::path::Path) {
     }
 }
 
+/// Whether the window goes through XWayland rather than native Wayland: when an X server is there
+/// (`display`), unless WORDCRAFT_WAYLAND=1 asked for Wayland (`wayland_asked`) or this is WSL
+/// (`wsl`). WSLg shows no mouse pointer over winit's X11 windows, though the cursor is set and
+/// loads, so there the app keeps Wayland, where the pointer shows, and gives up file drag-and-drop.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn runs_through_xwayland(display: bool, wayland_asked: bool, wsl: bool) -> bool {
+    display && !wayland_asked && !wsl
+}
+
+/// Whether this is Linux under WSL: WSL sets WSL_DISTRO_NAME or WSL_INTEROP, and its kernel names
+/// itself "microsoft" (`5.15.x-microsoft-standard-WSL2`) for a process started without them.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn under_wsl() -> bool {
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || std::env::var_os("WSL_INTEROP").is_some()
+        || std::fs::read_to_string("/proc/sys/kernel/osrelease").is_ok_and(|r| r.to_ascii_lowercase().contains("microsoft"))
+}
+
 /// Parses the command line, installs logging and the panic hook, restores preferences and window
 /// geometry, opens requested documents or the Start screen, starts the control server when
 /// asked, and runs the eframe event loop.
@@ -420,8 +438,8 @@ fn main() -> eframe::Result {
     #[cfg(all(unix, not(target_os = "macos")))]
     // winit has no file drag-and-drop on Wayland (only on X11), so dropping files from the file
     // manager showed a "no" cursor. Run through XWayland when it's there; WORDCRAFT_WAYLAND=1
-    // keeps the native Wayland backend.
-    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("WORDCRAFT_WAYLAND").is_none() {
+    // keeps the native Wayland backend, and so does WSL (`runs_through_xwayland`).
+    if runs_through_xwayland(std::env::var_os("DISPLAY").is_some(), std::env::var_os("WORDCRAFT_WAYLAND").is_some(), under_wsl()) {
         options.event_loop_builder = Some(Box::new(|b| {
             use winit::platform::x11::EventLoopBuilderExtX11;
             b.with_x11();
@@ -509,6 +527,14 @@ fn main() -> eframe::Result {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStringExt;
+
+    #[test]
+    fn xwayland_only_with_an_x_server_outside_wsl_unless_wayland_is_asked_for() {
+        assert!(runs_through_xwayland(true, false, false), "a Wayland desktop with XWayland");
+        assert!(!runs_through_xwayland(false, false, false), "no X server");
+        assert!(!runs_through_xwayland(true, true, false), "WORDCRAFT_WAYLAND=1");
+        assert!(!runs_through_xwayland(true, false, true), "WSLg: no pointer over X11 windows");
+    }
 
     #[test]
     fn a_file_whose_name_isnt_unicode_opens_and_saves_back_to_itself() {

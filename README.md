@@ -291,6 +291,9 @@ of file drag-and-drop), start it with `WORDCRAFT_WAYLAND=1`:
 WORDCRAFT_WAYLAND=1 wordcraft
 ```
 
+Under WSL (WSLg) the app always keeps native Wayland: WSLg shows no mouse pointer over XWayland
+windows, so file drag-and-drop is unavailable there.
+
 **Arch Linux (AUR).** Community members maintain three AUR packages; the project doesn't publish
 to the AUR itself. Install one of them:
 | Package | What it installs | Choose it when |
